@@ -1,81 +1,70 @@
 pipeline {
-    agent any 
-    
-    tools{
+    agent any
+    tools
+    {
         jdk 'jdk11'
         maven 'maven3'
     }
-    
-    environment {
-        SCANNER_HOME=tool 'sonar-scanner'
+    environment
+    {
+        SCANNER_HOME = tool 'sonar-scanner'
     }
-    
-    stages{
-        
-        stage("Git Checkout"){
-            steps{
-                git branch: 'main', changelog: false, poll: false, url: 'https://github.com/jaiswaladi246/Petclinic.git'
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', credentialsId: '5c9df7d6-fea5-4802-837d-3521aa82cf8b', url: 'https://github.com/chameerakularathna/Petclinic'
             }
         }
-        
-        stage("Compile"){
-            steps{
-                sh "mvn clean compile"
+        stage('Compile Code') {
+            steps {
+                sh 'mvn clean compile'
             }
         }
-        
-         stage("Test Cases"){
-            steps{
-                sh "mvn test"
+       stage('Sonarqube Analysis') 
+       {
+            steps {
+                sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.url=http://192.168.43.4:9000/ -Dsonar.login=squ_13f81064b900ea55b41bbf08860d509ea465acf6 -Dsonar.projectName=webshop \
+                -Dsonar.java.binaries=. \
+                -Dsonar.projectKey=webshop '''
+            }
+       }
+         stage('OWASP Dependacy Scan') {
+            steps {
+                dependencyCheck additionalArguments: ' --scan ./', odcInstallation: 'DP'
+                dependencyCheckPublisher pattern: '**/dependancy-check-report.xml'
             }
         }
-        
-        stage("Sonarqube Analysis "){
-            steps{
-                withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Petclinic \
-                    -Dsonar.java.binaries=. \
-                    -Dsonar.projectKey=Petclinic '''
-    
+         stage('Build Code') {
+            steps {
+                sh 'mvn clean install'
+            }
+        }
+         stage('Build Docker Image') {
+            steps {
+              script
+              {
+                withDockerRegistry(credentialsId: 'bebe36e2-c4b9-45aa-9cf4-206394f82ccc', toolName: 'docker') {
+                    sh " docker build -t charey/petclinic ."
+                  }
+              }
+            }
+        }
+         stage('Deploy Docker Image') {
+            steps {
+              script
+              {
+                withCredentials([string(credentialsId: 'dockerhubpwd', variable: 'dockerhubpwd')]) {
+                 sh 'docker login -u chameeramadumalkularathna@gmail.com -p ${dockerhubpwd}'
+                 sh 'docker push charey/petclinic '
                 }
+              }
             }
         }
-        
-        stage("OWASP Dependency Check"){
+        stage('Trigger CD Pipeline')
+        {
             steps{
-                dependencyCheck additionalArguments: '--scan ./ --format HTML ', odcInstallation: 'DP'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-            }
-        }
-        
-         stage("Build"){
-            steps{
-                sh " mvn clean install"
-            }
-        }
-        
-        stage("Docker Build & Push"){
-            steps{
-                script{
-                   withDockerRegistry(credentialsId: '58be877c-9294-410e-98ee-6a959d73b352', toolName: 'docker') {
-                        
-                        sh "docker build -t image1 ."
-                        sh "docker tag image1 adijaiswal/pet-clinic123:latest "
-                        sh "docker push adijaiswal/pet-clinic123:latest "
-                    }
-                }
-            }
-        }
-        
-        stage("TRIVY"){
-            steps{
-                sh " trivy image adijaiswal/pet-clinic123:latest"
-            }
-        }
-        
-        stage("Deploy To Tomcat"){
-            steps{
-                sh "cp  /var/lib/jenkins/workspace/CI-CD/target/petclinic.war /opt/apache-tomcat-9.0.65/webapps/ "
+                build job: "cd-pipelin" , wait:true
             }
         }
     }
