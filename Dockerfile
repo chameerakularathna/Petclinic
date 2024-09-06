@@ -5,4 +5,4 @@ EXPOSE 8082
 
 FROM gcr.io/distroless/java17-debian12
 COPY --from=build /app /app
-ENTRYPOINT ["java","-jar","/petclinic.war"]
+ENTRYPOINT ["java","-jar","/app/petclinic.war"]
